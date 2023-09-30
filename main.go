@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"rinha-backend-golang/cache"
 	"rinha-backend-golang/database"
 	"rinha-backend-golang/repository"
@@ -15,6 +16,10 @@ import (
 
 	_ "github.com/lib/pq"
 )
+
+type MessageValidation struct {
+	Message string `json:'message'`
+}
 
 func main() {
 	godotenv.Load()
@@ -29,6 +34,13 @@ func main() {
 	r.HandleFunc("/pessoas/{id}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
+
+		if len(id) == 0 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Id is required",
+			})
+		}
+
 		peopleCached, _ := client.Get(ctx, id).Result()
 		if len(peopleCached) > 0 {
 			fmt.Fprint(w, peopleCached)
@@ -68,6 +80,13 @@ func main() {
 	r.HandleFunc("/pessoas", func(w http.ResponseWriter, r *http.Request) {
 		term := r.URL.Query().Get("t")
 
+		if len(term) == 0 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Term is required",
+			})
+			return
+		}
+
 		keyCached := term
 		value, _ := client.Get(ctx, keyCached).Result()
 		if len(value) > 0 {
@@ -92,6 +111,60 @@ func main() {
 	r.HandleFunc("/pessoas", func(w http.ResponseWriter, r *http.Request) {
 		var p repository.Pessoa
 		json.NewDecoder(r.Body).Decode(&p)
+
+		if len(p.Apelido) == 0 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Apelido is required",
+			})
+			return
+		}
+
+		if len(p.Nome) == 0 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Nome is required",
+			})
+			return
+		}
+
+		if len(p.Nascimento) == 0 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Nascimento is required",
+			})
+			return
+		}
+
+		if len(p.Apelido) > 36 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Apelido can't more than 36 characters",
+			})
+			return
+		}
+
+		if len(p.Nome) > 100 {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Nome can't more than 100 characters",
+			})
+			return
+		}
+
+		isValidDate, _ := regexp.MatchString("([0-9]){4}-([0-9]){2}-([0-9]){2}", p.Nascimento)
+		if isValidDate {
+			fmt.Fprint(w, MessageValidation{
+				Message: "Nascimento is invalid. The correct format YYY-MM-DD",
+			})
+			return
+		}
+
+		if len(p.Stack) > 0 {
+			for _, value := range p.Stack {
+				if len(value) > 32 {
+					fmt.Fprint(w, MessageValidation{
+						Message: "Stack has one item has more than 32 characters",
+					})
+					return
+				}
+			}
+		}
 
 		_, err := repository.Insert(db, &p)
 		if err != nil {
