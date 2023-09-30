@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -21,6 +22,8 @@ type MessageValidation struct {
 	Message string `json:'message'`
 }
 
+const MAX_GOROTINES = 10
+
 func main() {
 	godotenv.Load()
 	db := database.Start()
@@ -29,6 +32,7 @@ func main() {
 	pong, err := client.Ping(ctx).Result()
 	fmt.Println(pong, err)
 
+	guard := make(chan struct{}, MAX_GOROTINES)
 	r := mux.NewRouter()
 
 	r.HandleFunc("/pessoas/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +152,7 @@ func main() {
 		}
 
 		isValidDate, _ := regexp.MatchString("([0-9]){4}-([0-9]){2}-([0-9]){2}", p.Nascimento)
-		if isValidDate {
+		if !isValidDate {
 			fmt.Fprint(w, MessageValidation{
 				Message: "Nascimento is invalid. The correct format YYY-MM-DD",
 			})
@@ -166,17 +170,20 @@ func main() {
 			}
 		}
 
-		_, err := repository.Insert(db, &p)
-		if err != nil {
-			log.Fatal(err)
-		}
-
+		guard <- struct{}{}
+		go func(db *sql.DB, p *repository.Pessoa) {
+			_, err := repository.Insert(db, p)
+			if err != nil {
+				log.Fatal(err)
+			}
+			<-guard
+		}(db, &p)
 		w.WriteHeader(http.StatusCreated)
 	}).Methods("POST")
 
 	srv := &http.Server{
 		Handler: r,
-		Addr:    "127.0.0.1:8000",
+		Addr:    "0.0.0.0:8000",
 	}
 
 	fmt.Println("Server is running")

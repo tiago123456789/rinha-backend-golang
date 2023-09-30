@@ -2,12 +2,22 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 )
 
 func Start() *sql.DB {
-	db, err := sql.Open("postgres", os.Getenv("DB_URL"))
+	url := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable",
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_HOST"),
+		5432,
+		os.Getenv("DB_NAME"),
+	)
+
+	db, err := sql.Open("postgres", url)
+
 	if err != nil {
 		log.Fatal(err)
 	}
